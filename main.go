@@ -44,20 +44,23 @@ func forward(localConn net.Conn, fc ForwardConfig) {
 		key := []byte(keyStr)
 		signer, err := ssh.ParsePrivateKey(key)
 		if err != nil {
-			log.Fatalf("unable to parse private key: %v", err)
+			log.Printf("unable to parse private key: %v", err)
+		} else {
+			auth = append(auth, ssh.PublicKeys(signer))
 		}
-		auth = append(auth, ssh.PublicKeys(signer))
 	}
 	if fc.proxyKeyPath != "" && PathExist(fc.proxyKeyPath) {
 		key, err := ioutil.ReadFile(fc.proxyKeyPath)
 		if err != nil {
-			log.Fatalf("unable to read private key: %v", err)
+			log.Printf("unable to read private key: %v", err)
+		} else {
+			signer, err := ssh.ParsePrivateKey(key)
+			if err != nil {
+				log.Printf("unable to parse private key: %v", err)
+			} else {
+				auth = append(auth, ssh.PublicKeys(signer))
+			}
 		}
-		signer, err := ssh.ParsePrivateKey(key)
-		if err != nil {
-			log.Fatalf("unable to parse private key: %v", err)
-		}
-		auth = append(auth, ssh.PublicKeys(signer))
 	}
 
 	sshConfig := &ssh.ClientConfig{
