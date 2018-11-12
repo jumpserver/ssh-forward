@@ -20,16 +20,39 @@ type ForwardConfig struct {
 	proxyPort  string
 	proxyUser  string
 	proxyPass  string
+	proxyKey   string
 	remoteAddr string
+}
+
+func PathExist(_path string) bool {
+	_, err := os.Stat(_path)
+	if err != nil && os.IsNotExist(err) {
+		return false
+	}
+	return true
 }
 
 func forward(localConn net.Conn, fc ForwardConfig) {
 	// Setup sshClientConn (type *ssh.ClientConn)
+	var auth []ssh.AuthMethod
+	if fc.proxyPass != "" {
+		auth = append(auth, ssh.Password(fc.proxyPass))
+	}
+	if fc.proxyKey != "" && PathExist(fc.proxyKey) {
+		key, err := ioutil.ReadFile(fc.proxyKey)
+		if err != nil {
+			log.Fatalf("unable to read private key: %v", err)
+		}
+		signer, err := ssh.ParsePrivateKey(key)
+		if err != nil {
+			log.Fatalf("unable to parse private key: %v", err)
+		}
+		auth = append(auth, ssh.PublicKeys(signer))
+	}
+
 	sshConfig := &ssh.ClientConfig{
-		User: fc.proxyUser,
-		Auth: []ssh.AuthMethod{
-			ssh.Password(fc.proxyPass),
-		},
+		User:            fc.proxyUser,
+		Auth:            auth,
 		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
 	}
 	serverAddr := fc.proxyHost + ":" + fc.proxyPort
@@ -106,6 +129,7 @@ func main() {
 	proxyPort := flag.String("port", "22", "Proxy server port")
 	proxyUser := flag.String("username", "root", "SSH username to connect")
 	proxyPass := flag.String("password", "", "SSH password")
+	proxyKey := flag.String("privateKey", "/root/.ssh/id_rsa", "SSH private key path")
 	remoteAddr := flag.String("remoteAddr", "1.1.1.1:3389", "Remote addr proxy connect to")
 	flag.Parse()
 
@@ -140,6 +164,7 @@ func main() {
 		proxyPort:  *proxyPort,
 		proxyUser:  *proxyUser,
 		proxyPass:  *proxyPass,
+		proxyKey:   *proxyKey,
 		remoteAddr: *remoteAddr,
 	}
 
