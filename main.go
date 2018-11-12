@@ -16,12 +16,13 @@ import (
 
 type ForwardConfig struct {
 	// SSH Server information
-	proxyHost  string
-	proxyPort  string
-	proxyUser  string
-	proxyPass  string
-	proxyKey   string
-	remoteAddr string
+	proxyHost    string
+	proxyPort    string
+	proxyUser    string
+	proxyPass    string
+	proxyKey     string
+	proxyKeyPath string
+	remoteAddr   string
 }
 
 func PathExist(_path string) bool {
@@ -38,8 +39,17 @@ func forward(localConn net.Conn, fc ForwardConfig) {
 	if fc.proxyPass != "" {
 		auth = append(auth, ssh.Password(fc.proxyPass))
 	}
-	if fc.proxyKey != "" && PathExist(fc.proxyKey) {
-		key, err := ioutil.ReadFile(fc.proxyKey)
+	if fc.proxyKey != "" {
+		keyStr := strings.Replace(fc.proxyKey, "\\n", "\n", -1)
+		key := []byte(keyStr)
+		signer, err := ssh.ParsePrivateKey(key)
+		if err != nil {
+			log.Fatalf("unable to parse private key: %v", err)
+		}
+		auth = append(auth, ssh.PublicKeys(signer))
+	}
+	if fc.proxyKeyPath != "" && PathExist(fc.proxyKeyPath) {
+		key, err := ioutil.ReadFile(fc.proxyKeyPath)
 		if err != nil {
 			log.Fatalf("unable to read private key: %v", err)
 		}
@@ -129,7 +139,8 @@ func main() {
 	proxyPort := flag.String("port", "22", "Proxy server port")
 	proxyUser := flag.String("username", "root", "SSH username to connect")
 	proxyPass := flag.String("password", "", "SSH password")
-	proxyKey := flag.String("privateKey", "/root/.ssh/id_rsa", "SSH private key path")
+	proxyKey := flag.String("privateKey", "", "SSH private key content")
+	proxyKeyPath := flag.String("privateKeyPath", "", "SSH private key path")
 	remoteAddr := flag.String("remoteAddr", "1.1.1.1:3389", "Remote addr proxy connect to")
 	flag.Parse()
 
@@ -160,12 +171,13 @@ func main() {
 	}
 
 	config := ForwardConfig{
-		proxyHost:  *proxyHost,
-		proxyPort:  *proxyPort,
-		proxyUser:  *proxyUser,
-		proxyPass:  *proxyPass,
-		proxyKey:   *proxyKey,
-		remoteAddr: *remoteAddr,
+		proxyHost:    *proxyHost,
+		proxyPort:    *proxyPort,
+		proxyUser:    *proxyUser,
+		proxyPass:    *proxyPass,
+		proxyKey:     *proxyKey,
+		proxyKeyPath: *proxyKeyPath,
+		remoteAddr:   *remoteAddr,
 	}
 
 	if *asDaemon {
