@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/base64"
 	"flag"
 	"github.com/sevlyar/go-daemon"
 	"golang.org/x/crypto/ssh"
@@ -133,6 +134,7 @@ func main() {
 	proxyUser := flag.String("username", "root", "SSH username to connect")
 	proxyPass := flag.String("password", "", "SSH password")
 	proxyKey := flag.String("privateKey", "", "SSH private key path")
+	b64 := flag.Bool("b64", false, "Encoding pass")
 	remoteAddr := flag.String("remoteAddr", "1.1.1.1:3389", "Remote addr proxy connect to")
 	flag.Parse()
 
@@ -162,11 +164,21 @@ func main() {
 		return
 	}
 
+	password := *proxyPass
+	if *b64 {
+		passwordBytes, err := base64.StdEncoding.DecodeString(password)
+		if err != nil {
+			log.Fatal("Decode password error")
+			return
+		}
+		password = string(passwordBytes)
+	}
+
 	config := ForwardConfig{
 		proxyHost:  *proxyHost,
 		proxyPort:  *proxyPort,
 		proxyUser:  *proxyUser,
-		proxyPass:  *proxyPass,
+		proxyPass:  password,
 		proxyKey:   *proxyKey,
 		remoteAddr: *remoteAddr,
 	}
