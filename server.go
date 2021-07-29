@@ -18,10 +18,6 @@ type Server struct {
 }
 
 func (s *Server) Serve(ln net.Listener) error {
-	if addr, ok := ln.Addr().(*net.TCPAddr); ok {
-		res := NewSuccessResponse(addr)
-		res.Return()
-	}
 	for {
 		conn, err := ln.Accept()
 		if err != nil {

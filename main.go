@@ -124,7 +124,10 @@ func main() {
 		res.Return()
 		return
 	}
-
+	if addrLn, ok := ln.Addr().(*net.TCPAddr); ok {
+		res := NewSuccessResponse(addrLn)
+		res.Return()
+	}
 	if *asDaemon {
 		startAsDaemon(ln, &srv)
 	} else {
@@ -133,7 +136,8 @@ func main() {
 }
 
 func startAsDaemon(ln net.Listener, srv *Server) {
-	addr := ln.Addr().String()
+	addrLn := ln.Addr().(*net.TCPAddr)
+	addr := fmt.Sprintf("%s:%d", addrLn.IP, addrLn.Port)
 	ctx := &daemon.Context{
 		PidFileName: "/tmp/" + addr + ".pid",
 		PidFilePerm: 0644,
