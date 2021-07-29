@@ -3,8 +3,10 @@ package main
 import (
 	"encoding/base64"
 	"flag"
+	"fmt"
 	"io/ioutil"
 	"log"
+	"net"
 	"os"
 	"strconv"
 	"strings"
@@ -16,7 +18,7 @@ import (
 func main() {
 	signal := flag.String("s", "start", "start | stop")
 	asDaemon := flag.Bool("d", false, "As daemon")
-	listenAddr := flag.String("listen", "12222", "Listen addr")
+	listenAddr := flag.String("listen", "", "Listen addr")
 	proxyHost := flag.String("host", "127.0.0.1", "Proxy server host")
 	proxyPort := flag.String("port", "22", "Proxy server port")
 	proxyUser := flag.String("username", "root", "SSH username to connect")
@@ -28,10 +30,12 @@ func main() {
 	flag.Parse()
 
 	var addr string
-	if strings.Contains(*listenAddr, ":") {
-		addr = *listenAddr
-	} else {
-		addr = "127.0.0.1:" + *listenAddr
+	if *listenAddr != "" {
+		if strings.Contains(*listenAddr, ":") {
+			addr = *listenAddr
+		} else {
+			addr = "127.0.0.1:" + *listenAddr
+		}
 	}
 
 	if *signal == "stop" {
@@ -57,7 +61,9 @@ func main() {
 	if *b64 {
 		passwordBytes, err := base64.StdEncoding.DecodeString(password)
 		if err != nil {
-			log.Fatal("Decode password error")
+			msg := fmt.Sprintf("Decode password error %s", err)
+			res := NewErrResponse(ErrParams, msg)
+			res.Return()
 			return
 		}
 		password = string(passwordBytes)
@@ -66,7 +72,9 @@ func main() {
 	if *proxyB64PrivateKey != "" {
 		passwordBytes, err := base64.StdEncoding.DecodeString(*proxyB64PrivateKey)
 		if err != nil {
-			log.Fatalf("Decode private key error %s", err)
+			msg := fmt.Sprintf("Decode private key error %s", err)
+			res := NewErrResponse(ErrParams, msg)
+			res.Return()
 			return
 		}
 		privateKey = string(passwordBytes)
@@ -74,7 +82,10 @@ func main() {
 	if *proxyKey != "" {
 		content, err := ioutil.ReadFile(*proxyKey)
 		if err != nil {
-			log.Fatalf("Read private key err: %s", err)
+			msg := fmt.Sprintf("Read private key err %s", err)
+			res := NewErrResponse(ErrParams, msg)
+			res.Return()
+			return
 		}
 		privateKey = string(content)
 	}
@@ -92,27 +103,41 @@ func main() {
 	}
 	sshClient, err := NewSSHClient(sshOptions...)
 	if err != nil {
-		log.Fatalf("SSH Client err: %s\n", err)
+		res := NewErrResponse(ErrGateWay, err.Error())
+		res.Return()
+		return
 	}
 
 	srv := Server{
-		addr:    addr,
 		client:  sshClient,
 		dstAddr: *remoteAddr,
 	}
 
+	if addr == "" {
+		addr = "0.0.0.0:0"
+	}
+
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		msg := fmt.Sprintf("listen addr %s err: %s", addr, err)
+		res := NewErrResponse(ErrListen, msg)
+		res.Return()
+		return
+	}
+
 	if *asDaemon {
-		startAsDaemon(&srv)
+		startAsDaemon(ln, &srv)
 	} else {
-		srv.ListenAndServe()
+		log.Println(srv.Serve(ln))
 	}
 }
 
-func startAsDaemon(srv *Server) {
+func startAsDaemon(ln net.Listener, srv *Server) {
+	addr := ln.Addr().String()
 	ctx := &daemon.Context{
-		PidFileName: "/tmp/" + srv.addr + ".pid",
+		PidFileName: "/tmp/" + addr + ".pid",
 		PidFilePerm: 0644,
-		LogFileName: "/tmp/" + srv.addr + ".log",
+		LogFileName: "/tmp/" + addr + ".log",
 		LogFilePerm: 0640,
 		Umask:       027,
 		WorkDir:     "./",
@@ -125,5 +150,7 @@ func startAsDaemon(srv *Server) {
 		return
 	}
 	defer ctx.Release()
-	srv.ListenAndServe()
+	if err = srv.Serve(ln); err != nil {
+		log.Fatal(err)
+	}
 }
